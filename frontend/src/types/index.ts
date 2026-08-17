@@ -119,12 +119,15 @@ export interface Reservation {
   shop: number;
   shop_name: string;
   shop_location?: string;
+  shop_phone?: string;
   status: 'PENDING' | 'ACCEPTED' | 'READY' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
   items: ReservationItem[];
   total_amount: string;
   estimated_eta_minutes: number;
   pickup_eta_minutes?: number;
   whatsapp_notification_status?: 'PENDING' | 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'MOCK' | null;
+  whatsapp_link?: string;
+  whatsapp_error?: string;
   created_at: string;
   updated_at: string;
 }

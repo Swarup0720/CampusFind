@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Sparkles, MapPin, Store, CheckCircle, Clock, 
-  ShoppingBag, ArrowRight, X, RefreshCw, User as UserIcon, Phone, Mail, LogOut
+  ShoppingBag, ArrowRight, X, RefreshCw, User as UserIcon, Phone, Mail, LogOut,
+  Search, ShieldCheck
 } from 'lucide-react';
 import { searchService, reservationService } from '../services/api';
 import { SearchResultItem, Reservation } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Modal } from '../components/ui/Modal';
 
 export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' | 'profile' }> = ({ activeTab = 'search' }) => {
   const { user, logout } = useAuth();
@@ -115,28 +119,20 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
         selectedEta
       );
 
-      // Determine the WhatsApp notification message based on backend status
-      // This is driven by backend data — never hardcoded
-      const notifStatus = newReservation.whatsapp_notification_status;
-      let notifLine = '';
-      if (notifStatus === 'SENT') {
-        notifLine = '💬 Real WhatsApp notification sent to shopkeeper (+91 9348957645).';
-      } else if (notifStatus === 'NOT_CONFIGURED') {
-        notifLine = '⚠️ Order confirmed. Real WhatsApp delivery is not configured. Configure the WhatsApp Business sender credentials before testing.';
-      } else if (notifStatus === 'FAILED') {
-        notifLine = '⚠️ Order confirmed. Real WhatsApp delivery attempt failed. Check Admin Panel logs for error details.';
-      } else if (notifStatus === 'MOCK') {
-        notifLine = '🔧 Your order is confirmed. Notification service is currently in test mode.';
-      } else {
-        notifLine = '✓ Order confirmed. Shopkeeper notification is being processed.';
+      // Try opening the WhatsApp deep link automatically
+      if (newReservation.whatsapp_link) {
+        window.open(newReservation.whatsapp_link, '_blank');
+      } else if (newReservation.whatsapp_error === 'MISSING_NUMBER') {
+        alert('WhatsApp is not configured for this shop.');
+      } else if (newReservation.whatsapp_error === 'INVALID_NUMBER') {
+        alert("The shopkeeper's WhatsApp contact is currently unavailable.");
       }
-
 
       const confirmMsg: ChatMessage = {
         id: `conf-${Date.now()}`,
         sender: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `🎉 **Order Confirmed ✓**\n\n${notifLine}\n\nShow code **${newReservation.reservation_code}** when you collect your item at **${activeReservationModalItem.shop}**.`,
+        text: `✓ **Order Initiated**\n\nYour request has been initiated with:\n\n**${activeReservationModalItem.shop}**\n\n🛒 ${activeReservationModalItem.product} × 1\n⏱ Within ${selectedEta} minutes\n\nThe shopkeeper has been contacted through WhatsApp.\n\nYou can collect the item once it is ready.`,
         reservationConfirmed: newReservation
       };
 
@@ -150,11 +146,20 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
     }
   };
 
-
   const handleCancelReservation = async (resId: number) => {
     if (!window.confirm("Are you sure you want to cancel this reservation? Stock will be released.")) return;
     try {
+      const targetRes = myReservations.find(r => r.id === resId);
       await reservationService.cancel(resId);
+      
+      // WhatsApp notification for cancellation to shopkeeper
+      if (targetRes?.shop_phone) {
+        const cleanPhone = targetRes.shop_phone.replace(/\D/g, '');
+        const cancelText = encodeURIComponent(`❌ *CAMPUSFIND ORDER CANCELLATION*\n\nReservation ID: *${targetRes.reservation_code}*\nStudent: ${user?.full_name || user?.username} (${user?.phone || 'ITER Student'})\nShop: ${targetRes.shop_name}\n\nNotice: This pickup reservation has been cancelled by the student. Any reserved stock has been released.\n\nThank you!`);
+        const cancelWaLink = `https://wa.me/91${cleanPhone}?text=${cancelText}`;
+        window.open(cancelWaLink, '_blank');
+      }
+
       await loadMyReservations();
     } catch (e) {
       alert("Failed to cancel reservation.");
@@ -166,42 +171,45 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
       {/* Search Tab View */}
       {activeTab === 'search' && (
         <>
-          {/* Active Campus Banner */}
-          <div className="bg-slate-900 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+          {/* Active Campus Status Banner */}
+          <div className="bg-[#132D46] border border-[#696E79]/30 rounded-card p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-[#01C38D]/15 border border-[#01C38D]/30 flex items-center justify-center text-[#01C38D] shadow-[0_0_15px_rgba(1,195,141,0.2)]">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-base font-bold text-white flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-tt-demibold text-[#FFFFFF] flex items-center gap-2">
                   ITER Campus Hyperlocal Marketplace
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-medium">
-                    20 Campus Outlets Live
-                  </span>
+                  <Badge variant="emerald" size="sm">20 Outlets Live</Badge>
                 </h1>
-                <p className="text-xs text-slate-400">
-                  Search stationery, snacks, printouts, and chargers in real time
+                <p className="text-xs text-[#01C38D] font-tt-demibold mt-0.5">
+                  Real-time stock check with instant WhatsApp shopkeeper order dispatch
                 </p>
               </div>
             </div>
 
             {myReservations.length > 0 && (
-              <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-                <ShoppingBag className="w-4 h-4 text-indigo-400" />
-                <span className="text-slate-300 font-medium">Active Reservations:</span>
-                <span className="font-bold text-indigo-400">{myReservations.filter(r => ['PENDING', 'ACCEPTED', 'READY'].includes(r.status)).length}</span>
+              <div className="flex items-center gap-2 bg-[#191E29] px-4 py-2.5 rounded-xl border border-[#696E79]/30 text-xs font-tt">
+                <ShoppingBag className="w-4 h-4 text-[#01C38D]" />
+                <span className="text-[#696E79] font-medium">Active Requests:</span>
+                <span className="font-tt-demibold text-[#01C38D] text-sm">
+                  {myReservations.filter(r => ['PENDING', 'ACCEPTED', 'READY'].includes(r.status)).length}
+                </span>
               </div>
             )}
           </div>
 
-          {/* Main Conversational Chatbox */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 flex flex-col h-[660px] shadow-lg overflow-hidden relative">
-            <div className="px-6 py-3.5 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                <span className="text-xs font-semibold text-slate-300">Campus Product Search</span>
+          {/* Main Conversational Terminal */}
+          <div className="bg-[#132D46] border border-[#696E79]/30 rounded-card flex flex-col h-[670px] shadow-[0_12px_40px_rgba(0,0,0,0.4)] overflow-hidden relative">
+            {/* Header bar */}
+            <div className="px-6 py-4 border-b border-[#696E79]/20 bg-[#191E29]/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-[#01C38D] animate-pulse shadow-[0_0_8px_#01C38D]" />
+                <span className="text-xs font-tt-demibold text-[#FFFFFF] tracking-wide">Campus Inventory Terminal</span>
               </div>
-              <span className="text-xs text-slate-400">Student: <strong className="text-white">{user?.full_name || user?.username}</strong></span>
+              <span className="text-xs text-[#696E79] font-tt">
+                Connected Student: <strong className="text-[#FFFFFF] font-tt-demibold">{user?.full_name || user?.username}</strong>
+              </span>
             </div>
 
             {/* Chat Stream */}
@@ -212,26 +220,26 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                   className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} max-w-full`}
                 >
                   <div className="flex items-center gap-2 mb-1.5 px-1">
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      {msg.sender === 'user' ? user?.full_name || 'You' : 'CampusFind Assistant'}
+                    <span className="text-[11px] font-tt-demibold text-[#696E79]">
+                      {msg.sender === 'user' ? user?.full_name || 'You' : 'CampusFind Core'}
                     </span>
-                    <span className="text-[10px] text-slate-600">{msg.timestamp}</span>
+                    <span className="text-[10px] text-[#696E79]/70 font-tt">{msg.timestamp}</span>
                   </div>
 
                   {msg.text && (
                     <div
-                      className={`p-4 rounded-2xl max-w-2xl text-sm leading-relaxed ${
+                      className={`p-4 rounded-2xl max-w-2xl text-sm leading-relaxed font-tt ${
                         msg.sender === 'user'
-                          ? 'bg-indigo-600 text-white rounded-tr-none'
-                          : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-none'
+                          ? 'bg-[#01C38D] text-[#191E29] font-tt-demibold font-bold rounded-tr-none shadow-[0_4px_16px_rgba(1,195,141,0.3)]'
+                          : 'bg-[#191E29] border border-[#696E79]/30 text-[#FFFFFF] rounded-tl-none shadow-md'
                       }`}
                     >
                       <p className="whitespace-pre-wrap">
                         {msg.text?.split(/(\*\*.*?\*\*|\*.*?\*)/g).map((part, i) => {
                           if (part.startsWith('**') && part.endsWith('**')) {
-                            return <strong key={i} className="font-bold text-white">{part.slice(2, -2)}</strong>;
+                            return <strong key={i} className={`font-tt-demibold ${msg.sender === 'user' ? 'text-[#191E29]' : 'text-[#FFFFFF]'}`}>{part.slice(2, -2)}</strong>;
                           } else if (part.startsWith('*') && part.endsWith('*')) {
-                            return <em key={i} className="italic text-indigo-300">{part.slice(1, -1)}</em>;
+                            return <em key={i} className={`italic ${msg.sender === 'user' ? 'text-[#191E29]' : 'text-[#01C38D]'}`}>{part.slice(1, -1)}</em>;
                           }
                           return part;
                         })}
@@ -244,113 +252,140 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                       {msg.searchResults.map((item) => (
                         <div
                           key={`${msg.id}-${item.id}`}
-                          className="bg-slate-950 rounded-xl p-4 border border-slate-800 hover:border-indigo-500/50 transition-all flex flex-col justify-between group"
+                          className="bg-[#191E29] rounded-card p-4 border border-[#696E79]/30 hover:border-[#01C38D] transition-all duration-200 flex flex-col justify-between group shadow-md"
                         >
                           <div>
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div>
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-900">
+                                <Badge variant="emerald" size="sm">
                                   {item.category}
-                                </span>
-                                <h3 className="font-bold text-white text-base mt-1 group-hover:text-indigo-300 transition-colors">
+                                </Badge>
+                                <h3 className="font-tt-demibold text-[#FFFFFF] text-base mt-1.5 group-hover:text-[#01C38D] transition-colors">
                                   {item.product}
                                 </h3>
                                 {item.brand && (
-                                  <span className="text-xs text-slate-400">Brand: {item.brand}</span>
+                                  <span className="text-xs text-[#696E79] font-tt">Brand: {item.brand}</span>
                                 )}
                               </div>
                               <div className="text-right">
-                                <span className="text-lg font-bold text-emerald-400">₹{item.price}</span>
-                                <div className="text-[11px] text-slate-500">per {item.unit}</div>
+                                <span className="text-xl font-tt-demibold text-[#01C38D]">₹{item.price}</span>
+                                <div className="text-[11px] text-[#696E79] font-tt">per {item.unit}</div>
                               </div>
                             </div>
 
-                            <p className="text-xs text-slate-400 line-clamp-2 mb-3">
-                              {item.description || 'Available in stock at campus shop.'}
+                            <p className="text-xs text-[#696E79] font-tt line-clamp-2 mb-3">
+                              {item.description || 'In stock and verified at campus shop.'}
                             </p>
 
-                            <div className="space-y-1.5 text-xs text-slate-300 mb-4 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                              <div className="flex items-center gap-1.5 font-medium text-slate-200">
-                                <Store className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            <div className="space-y-1.5 text-xs text-[#696E79] font-tt mb-4 bg-[#132D46] p-3 rounded-lg border border-[#696E79]/20">
+                              <div className="flex items-center gap-1.5 font-tt-demibold text-[#FFFFFF]">
+                                <Store className="w-3.5 h-3.5 text-[#01C38D] shrink-0" />
                                 <span className="truncate">{item.shop}</span>
                               </div>
-                              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3 text-slate-500" />
+                              <div className="flex items-center justify-between text-[11px] pt-1">
+                                <span className="flex items-center gap-1 text-[#696E79]">
+                                  <MapPin className="w-3 h-3 text-[#01C38D]" />
                                   {item.location_name}
                                 </span>
-                                <span className="text-indigo-300 font-semibold">{item.approx_distance_m}m away</span>
+                                <span className="text-[#01C38D] font-tt-demibold">{item.approx_distance_m}m away</span>
                               </div>
-                              <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px]">
-                                <span className="text-slate-400">Available Stock:</span>
-                                <span className="font-bold text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-900">
-                                  {item.available_quantity} available
+                              <div className="flex items-center justify-between pt-1 border-t border-[#696E79]/20 text-[11px]">
+                                <span className="text-[#696E79]">Available Stock:</span>
+                                <span className="font-tt-demibold text-[#01C38D]">
+                                  {item.available_quantity} units
                                 </span>
                               </div>
                             </div>
                           </div>
 
-                          <button
+                          <Button
                             onClick={() => setActiveReservationModalItem(item)}
-                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg text-xs flex items-center justify-center gap-2 transition-all"
+                            variant="primary"
+                            size="md"
+                            className="w-full"
+                            icon={<ShoppingBag className="w-4 h-4" />}
                           >
-                            <ShoppingBag className="w-3.5 h-3.5" />
                             <span>Reserve for Pickup</span>
-                          </button>
+                          </Button>
                         </div>
                       ))}
                     </div>
                   )}
 
                   {msg.reservationConfirmed && (
-                    <div className="mt-4 w-full max-w-lg bg-slate-950 rounded-2xl p-5 border border-emerald-500/30">
+                    <div className="mt-4 w-full max-w-lg bg-[#191E29] rounded-card p-5 border-2 border-[#01C38D] shadow-[0_0_30px_rgba(1,195,141,0.25)]">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                        <div className="w-11 h-11 rounded-xl bg-[#01C38D]/20 border border-[#01C38D] flex items-center justify-center text-[#01C38D] shadow-[0_0_15px_rgba(1,195,141,0.3)]">
                           <CheckCircle className="w-6 h-6" />
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Order Confirmed ✓</span>
-                          <h3 className="font-extrabold text-white text-lg">{msg.reservationConfirmed.reservation_code}</h3>
+                          <span className="text-[10px] font-tt-demibold uppercase tracking-wider text-[#01C38D]">
+                            {msg.reservationConfirmed.status === 'PENDING' ? 'Order Initiated' : 'Order Confirmed ✓'}
+                          </span>
+                          <h3 className="font-tt-demibold text-[#FFFFFF] text-xl tracking-tight">{msg.reservationConfirmed.reservation_code}</h3>
                         </div>
                       </div>
 
                       {/* Order summary */}
-                      <div className="space-y-2 mb-4 bg-slate-900 rounded-xl p-3 border border-slate-800 text-xs">
+                      <div className="space-y-2 mb-4 bg-[#132D46] rounded-xl p-3.5 border border-[#696E79]/30 text-xs font-tt">
+                        <div className="text-[#696E79] font-medium mb-1">
+                          Pickup Request Destination:
+                        </div>
+                        <div className="font-tt-demibold text-[#FFFFFF] text-sm mb-2">
+                          {msg.reservationConfirmed.shop_name}
+                        </div>
                         {msg.reservationConfirmed.items?.map(item => (
-                          <div key={item.id} className="flex justify-between text-slate-200">
-                            <span>{item.product_name} × {item.quantity}</span>
-                            <span className="font-bold text-emerald-400">₹{item.unit_price}</span>
+                          <div key={item.id} className="flex justify-between text-[#FFFFFF]">
+                            <span>🛒 {item.product_name} × {item.quantity}</span>
+                            <span className="font-tt-demibold text-[#01C38D]">₹{item.unit_price}</span>
                           </div>
                         ))}
-                        <div className="flex justify-between pt-2 border-t border-slate-800 font-bold text-sm">
-                          <span className="text-slate-300">Total</span>
-                          <span className="text-emerald-400">₹{msg.reservationConfirmed.total_amount}</span>
+                        <div className="flex justify-between pt-2 border-t border-[#696E79]/30 font-tt-demibold text-sm">
+                          <span className="text-[#FFFFFF]">Total Amount</span>
+                          <span className="text-[#01C38D]">₹{msg.reservationConfirmed.total_amount}</span>
                         </div>
-                        <div className="flex justify-between text-[11px] text-slate-400 pt-1">
-                          <span className="flex items-center gap-1"><Store className="w-3 h-3 text-indigo-400" />{msg.reservationConfirmed.shop_name}</span>
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-slate-500" />Pickup in {msg.reservationConfirmed.pickup_eta_minutes || msg.reservationConfirmed.estimated_eta_minutes || 20} mins</span>
+                        <div className="flex justify-between text-[11px] text-[#696E79] pt-1">
+                          <span className="flex items-center gap-1">⏱ ETA: Within {msg.reservationConfirmed.pickup_eta_minutes || 20} minutes</span>
                         </div>
                       </div>
 
-                      {/* Notification status */}
-                      <div className={`p-3 rounded-xl border text-xs font-medium ${
-                        msg.reservationConfirmed.whatsapp_notification_status === 'SENT'
-                          ? 'bg-emerald-950/60 border-emerald-800/40 text-emerald-300'
-                          : msg.reservationConfirmed.whatsapp_notification_status === 'NOT_CONFIGURED'
-                          ? 'bg-rose-950/40 border-rose-800/40 text-rose-300'
-                          : msg.reservationConfirmed.whatsapp_notification_status === 'MOCK'
-                          ? 'bg-amber-950/40 border-amber-800/30 text-amber-300'
-                          : msg.reservationConfirmed.whatsapp_notification_status === 'FAILED'
-                          ? 'bg-rose-950/40 border-rose-800/30 text-rose-300'
-                          : 'bg-slate-900 border-slate-800 text-slate-300'
-                      }`}>
-                        {msg.reservationConfirmed.whatsapp_notification_status === 'SENT' && '💬 Real WhatsApp notification sent to shopkeeper.'}
-                        {msg.reservationConfirmed.whatsapp_notification_status === 'NOT_CONFIGURED' && '⚠️ Real WhatsApp delivery is not configured. Configure the WhatsApp Business sender credentials before testing.'}
-                        {msg.reservationConfirmed.whatsapp_notification_status === 'MOCK' && '🔧 Your order is confirmed. Notification service is currently in test mode.'}
-                        {msg.reservationConfirmed.whatsapp_notification_status === 'FAILED' && '⚠️ Real WhatsApp delivery failed. Check Admin Panel for error logs.'}
-                        {(!msg.reservationConfirmed.whatsapp_notification_status || msg.reservationConfirmed.whatsapp_notification_status === 'PENDING') && '✓ Order confirmed. Show your code at pickup!'}
-                      </div>
+                      {/* Action */}
+                      <div className="space-y-3">
+                        <p className="text-xs text-[#696E79] font-tt">
+                          The shopkeeper has been notified via WhatsApp. You can collect your item once prepared.
+                        </p>
 
+                        {msg.reservationConfirmed.whatsapp_link && (
+                          <a
+                            href={msg.reservationConfirmed.whatsapp_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-2 w-full py-3 bg-[#01C38D] hover:bg-[#00AB7B] text-[#191E29] font-tt-demibold font-bold rounded-input text-sm transition-all shadow-[0_4px_16px_rgba(1,195,141,0.35)] hover:shadow-[0_6px_22px_rgba(1,195,141,0.5)]"
+                          >
+                            <span>💬 Send WhatsApp Message to Shopkeeper</span>
+                          </a>
+                        )}
+
+                        {msg.reservationConfirmed.whatsapp_notification_status && (
+                          <div className={`p-3 rounded-xl border text-xs font-tt ${
+                            msg.reservationConfirmed.whatsapp_notification_status === 'SENT'
+                              ? 'bg-[#01C38D]/15 border-[#01C38D]/40 text-[#01C38D] font-tt-demibold'
+                              : msg.reservationConfirmed.whatsapp_notification_status === 'NOT_CONFIGURED'
+                              ? 'bg-amber-950/40 border-amber-800/30 text-amber-300'
+                              : msg.reservationConfirmed.whatsapp_notification_status === 'MOCK'
+                              ? 'bg-[#132D46] border-[#696E79]/40 text-[#FFFFFF]'
+                              : msg.reservationConfirmed.whatsapp_notification_status === 'PENDING'
+                              ? 'bg-[#132D46] border-[#696E79]/40 text-[#696E79]'
+                              : 'bg-rose-950/40 border-rose-800/30 text-rose-300'
+                          }`}>
+                            {msg.reservationConfirmed.whatsapp_notification_status === 'SENT' && '💬 WhatsApp notification successfully sent to shopkeeper.'}
+                            {msg.reservationConfirmed.whatsapp_notification_status === 'NOT_CONFIGURED' && '⚠️ WhatsApp delivery is not configured on the server. Please configure WhatsApp Business API credentials.'}
+                            {msg.reservationConfirmed.whatsapp_notification_status === 'MOCK' && '🔧 WhatsApp delivery is in mock/development mode. No real message was sent.'}
+                            {msg.reservationConfirmed.whatsapp_notification_status === 'FAILED' && '⚠️ WhatsApp delivery failed. Please check backend server logs.'}
+                            {msg.reservationConfirmed.whatsapp_notification_status === 'PENDING' && '⏳ Dispatching WhatsApp notification to shopkeeper...'}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -358,9 +393,9 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
               ))}
 
               {loading && (
-                <div className="flex items-center gap-3 text-slate-400 text-xs p-4 bg-slate-950 rounded-2xl max-w-xs">
-                  <Sparkles className="w-4 h-4 text-indigo-400 animate-spin" />
-                  <span>Searching campus database...</span>
+                <div className="flex items-center gap-3 text-[#696E79] text-xs p-4 bg-[#191E29] rounded-2xl max-w-xs border border-[#696E79]/30 font-tt">
+                  <Sparkles className="w-4 h-4 text-[#01C38D] animate-spin" />
+                  <span className="text-[#FFFFFF]">Searching 20 campus outlets...</span>
                 </div>
               )}
 
@@ -368,39 +403,47 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
             </div>
 
             {/* Quick Queries Bar */}
-            <div className="px-4 py-2.5 bg-slate-950 border-t border-slate-800 flex items-center gap-2 overflow-x-auto">
-              <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">Quick Queries:</span>
+            <div className="px-4 py-3 bg-[#191E29]/90 border-t border-[#696E79]/20 flex items-center gap-2 overflow-x-auto">
+              <span className="text-[11px] text-[#696E79] font-tt-demibold whitespace-nowrap">Quick Queries:</span>
               {popularCategories.map((cat) => (
                 <button
                   key={cat.name}
                   onClick={() => handleSendQuery(cat.query)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-indigo-600/30 text-slate-300 text-xs font-medium border border-slate-800 whitespace-nowrap transition-all"
+                  className="px-3 py-1.5 rounded-lg bg-[#132D46] hover:bg-[#1A3B5C] text-[#FFFFFF] hover:text-[#01C38D] text-xs font-tt border border-[#696E79]/30 whitespace-nowrap transition-all shadow-sm"
                 >
                   {cat.name}
                 </button>
               ))}
             </div>
 
-            {/* Input Form */}
+            {/* Input Search Form */}
             <form
               onSubmit={(e) => { e.preventDefault(); handleSendQuery(); }}
-              className="p-3 sm:p-4 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
+              className="p-3.5 sm:p-4 bg-[#132D46] border-t border-[#696E79]/30 flex items-center gap-2.5"
             >
-              <input
-                type="text"
-                value={inputQuery}
-                onChange={(e) => setInputQuery(e.target.value)}
-                placeholder="Type your search (e.g. 'blue pen under ₹30', 'calculator', 'Maggi')..."
-                className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-              />
-              <button
+              <div className="flex-1 relative flex items-center">
+                <Search className="w-4 h-4 text-[#01C38D] absolute left-4" />
+                <input
+                  type="text"
+                  value={inputQuery}
+                  onChange={(e) => setInputQuery(e.target.value)}
+                  placeholder="Search live campus stock (e.g. 'blue pen under ₹30', 'calculator', 'Maggi')..."
+                  className="w-full pl-11 pr-4 py-3 bg-[#191E29] text-[#FFFFFF] placeholder-[#696E79] border border-[#696E79]/40 focus:border-[#01C38D] focus:ring-2 focus:ring-[#01C38D]/30 rounded-input text-sm font-medium focus:outline-none transition-all"
+                  style={{
+                    backgroundColor: '#191E29',
+                    color: '#FFFFFF',
+                  }}
+                />
+              </div>
+              <Button
                 type="submit"
                 disabled={!inputQuery.trim() || loading}
-                className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50"
+                variant="primary"
+                size="md"
+                icon={<Send className="w-4 h-4" />}
               >
                 <span>Search</span>
-                <Send className="w-4 h-4" />
-              </button>
+              </Button>
             </form>
           </div>
         </>
@@ -408,58 +451,62 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
 
       {/* Reservations Tab View */}
       {activeTab === 'reservations' && (
-        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
-          <div className="flex items-center justify-between mb-5">
+        <div className="bg-[#132D46] border border-[#696E79]/30 rounded-card p-6 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-indigo-400" />
+              <h2 className="text-lg font-tt-demibold text-[#FFFFFF] flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-[#01C38D]" />
                 My Campus Reservations
               </h2>
-              <p className="text-xs text-slate-400">View and track your product pickup reservations</p>
+              <p className="text-xs text-[#696E79] font-tt mt-0.5">Track and manage your hyperlocal pickup requests</p>
             </div>
             <button
               onClick={loadMyReservations}
-              className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-950 border border-slate-800"
+              className="p-2.5 text-[#696E79] hover:text-[#FFFFFF] rounded-xl bg-[#191E29] border border-[#696E79]/30 transition-colors"
+              title="Refresh Reservations"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>
 
           {myReservations.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-xs">
-              You haven't made any reservations yet. Use the Search tab to reserve items!
+            <div className="text-center py-16 text-[#696E79] text-sm font-tt">
+              <ShoppingBag className="w-8 h-8 text-[#696E79]/40 mx-auto mb-2" />
+              You haven't made any pickup reservations yet. Use the Search tab to reserve items!
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {myReservations.map((res) => (
-                <div key={res.id} className="bg-slate-950 rounded-xl p-4 border border-slate-800 text-xs flex flex-col justify-between gap-3">
+                <div key={res.id} className="bg-[#191E29] rounded-card p-4 border border-[#696E79]/30 text-xs font-tt flex flex-col justify-between gap-3 shadow-md hover:border-[#01C38D]/60 transition-colors">
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold font-mono text-indigo-300 text-sm">{res.reservation_code}</span>
-                      <span className={`px-2 py-0.5 rounded font-bold uppercase text-[10px] ${
-                        res.status === 'COMPLETED' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
-                        res.status === 'READY' ? 'bg-indigo-950 text-indigo-400 border border-indigo-800' :
-                        res.status === 'ACCEPTED' ? 'bg-blue-950 text-blue-400 border border-blue-800' :
-                        res.status === 'CANCELLED' ? 'bg-rose-950 text-rose-400 border border-rose-800' :
-                        'bg-amber-950 text-amber-400 border border-amber-800'
-                      }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-tt-demibold font-mono text-[#01C38D] text-sm">{res.reservation_code}</span>
+                      <Badge 
+                        variant={
+                          res.status === 'COMPLETED' ? 'emerald' :
+                          res.status === 'READY' ? 'emerald' :
+                          res.status === 'ACCEPTED' ? 'navy' :
+                          res.status === 'CANCELLED' ? 'rose' : 'amber'
+                        }
+                        size="sm"
+                      >
                         {res.status}
-                      </span>
+                      </Badge>
                     </div>
-                    <div className="text-slate-200 font-bold">{res.shop_name}</div>
-                    <div className="text-slate-400 text-[11px] mt-1">
-                      Items: {res.items?.map(i => `${i.product_name} x${i.quantity}`).join(', ')}
+                    <div className="text-[#FFFFFF] font-tt-demibold text-sm">{res.shop_name}</div>
+                    <div className="text-[#696E79] text-xs mt-1">
+                      Items: {res.items?.map(i => `${i.product_name} ×${i.quantity}`).join(', ')}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                    <span className="font-extrabold text-emerald-400 text-sm">Total: ₹{res.total_amount}</span>
+                  <div className="flex items-center justify-between pt-3 border-t border-[#696E79]/20">
+                    <span className="font-tt-demibold text-[#01C38D] text-sm">Total: ₹{res.total_amount}</span>
                     {['PENDING', 'ACCEPTED'].includes(res.status) && (
                       <button
                         onClick={() => handleCancelReservation(res.id)}
-                        className="text-rose-400 hover:text-rose-300 text-xs font-semibold underline"
+                        className="text-rose-400 hover:text-rose-300 text-xs font-tt-demibold underline transition-colors"
                       >
-                        Cancel Reservation
+                        Cancel Request
                       </button>
                     )}
                   </div>
@@ -472,109 +519,101 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
 
       {/* Profile Tab View */}
       {activeTab === 'profile' && (
-        <div className="bg-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-800 max-w-xl mx-auto space-y-6">
+        <div className="bg-[#132D46] border border-[#696E79]/30 rounded-card p-6 sm:p-8 max-w-xl mx-auto space-y-6 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-xl font-bold shadow-md shadow-indigo-600/30">
+            <div className="w-14 h-14 rounded-2xl bg-[#01C38D] flex items-center justify-center text-[#191E29] text-xl font-tt-demibold shadow-[0_0_20px_rgba(1,195,141,0.4)]">
               {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">{user?.full_name || user?.username}</h2>
-              <span className="text-xs text-indigo-300 font-medium bg-indigo-950 px-2 py-0.5 rounded border border-indigo-900">
+              <h2 className="text-xl font-tt-demibold text-[#FFFFFF]">{user?.full_name || user?.username}</h2>
+              <Badge variant="emerald" size="sm" className="mt-1">
                 ITER College Student Account
-              </span>
+              </Badge>
             </div>
           </div>
 
-          <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3.5 text-xs">
-            <div className="flex justify-between py-2 border-b border-slate-800/80">
-              <span className="text-slate-400 flex items-center gap-2">
-                <UserIcon className="w-3.5 h-3.5 text-slate-500" />
+          <div className="bg-[#191E29] p-5 rounded-card border border-[#696E79]/30 space-y-3.5 text-xs font-tt">
+            <div className="flex justify-between py-2 border-b border-[#696E79]/20">
+              <span className="text-[#696E79] flex items-center gap-2">
+                <UserIcon className="w-3.5 h-3.5 text-[#01C38D]" />
                 Full Name:
               </span>
-              <span className="font-semibold text-white">{user?.full_name || user?.username}</span>
+              <span className="font-tt-demibold text-[#FFFFFF]">{user?.full_name || user?.username}</span>
             </div>
 
-            <div className="flex justify-between py-2 border-b border-slate-800/80">
-              <span className="text-slate-400 flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-slate-500" />
+            <div className="flex justify-between py-2 border-b border-[#696E79]/20">
+              <span className="text-[#696E79] flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-[#01C38D]" />
                 Email Address:
               </span>
-              <span className="font-semibold text-white">{user?.email || 'Registered'}</span>
+              <span className="font-tt-demibold text-[#FFFFFF]">{user?.email || 'Registered'}</span>
             </div>
 
-            <div className="flex justify-between py-2 border-b border-slate-800/80">
-              <span className="text-slate-400 flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-slate-500" />
+            <div className="flex justify-between py-2 border-b border-[#696E79]/20">
+              <span className="text-[#696E79] flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-[#01C38D]" />
                 Mobile Phone:
               </span>
-              <span className="font-semibold text-white font-mono">{user?.phone ? `+91 ${user.phone}` : 'Registered'}</span>
+              <span className="font-tt-demibold text-[#FFFFFF] font-mono">{user?.phone ? `+91 ${user.phone}` : 'Registered'}</span>
             </div>
 
-            <div className="flex justify-between py-2 border-b border-slate-800/80">
-              <span className="text-slate-400 flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-slate-500" />
+            <div className="flex justify-between py-2 border-b border-[#696E79]/20">
+              <span className="text-[#696E79] flex items-center gap-2">
+                <MapPin className="w-3.5 h-3.5 text-[#01C38D]" />
                 Campus Association:
               </span>
-              <span className="font-semibold text-emerald-400">ITER College (SOA University)</span>
+              <span className="font-tt-demibold text-[#01C38D]">ITER College (SOA University)</span>
             </div>
 
             <div className="flex justify-between py-2">
-              <span className="text-slate-400 flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-[#696E79] flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-[#01C38D]" />
                 Member Since:
               </span>
-              <span className="font-semibold text-slate-300">
+              <span className="text-[#696E79]">
                 {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'August 2026'}
               </span>
             </div>
           </div>
 
-          <button
+          <Button
             onClick={logout}
-            className="w-full py-3 bg-rose-950/60 hover:bg-rose-900 text-rose-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-rose-800 transition-colors"
+            variant="danger"
+            size="lg"
+            className="w-full"
+            icon={<LogOut className="w-4 h-4" />}
           >
-            <LogOut className="w-4 h-4" />
             <span>Log Out of CampusFind</span>
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* Reservation Confirmation Modal Step */}
-      {activeReservationModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="relative w-full max-w-md bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-2xl">
-            <button
-              onClick={() => setActiveReservationModalItem(null)}
-              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h2 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-indigo-400" />
-              Confirm Product Reservation
-            </h2>
-            <p className="text-xs text-slate-400 mb-4">
-              Select your pickup arrival time. Stock will be reserved for you.
-            </p>
-
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 mb-5 space-y-2">
+      {/* Reservation Confirmation Modal */}
+      <Modal
+        isOpen={!!activeReservationModalItem}
+        onClose={() => setActiveReservationModalItem(null)}
+        title="Confirm Pickup Request"
+        subtitle="Select your arrival timeframe to notify the shopkeeper via WhatsApp."
+      >
+        {activeReservationModalItem && (
+          <div className="space-y-5 font-tt">
+            <div className="bg-[#191E29] p-4 rounded-card border border-[#696E79]/30 space-y-2">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-bold text-white text-sm">{activeReservationModalItem.product}</h3>
-                  <div className="text-xs text-slate-400">{activeReservationModalItem.shop}</div>
+                  <h4 className="font-tt-demibold text-[#FFFFFF] text-sm">{activeReservationModalItem.product}</h4>
+                  <div className="text-xs text-[#696E79]">{activeReservationModalItem.shop}</div>
                 </div>
-                <span className="text-base font-extrabold text-emerald-400">₹{activeReservationModalItem.price}</span>
+                <span className="text-lg font-tt-demibold text-[#01C38D]">₹{activeReservationModalItem.price}</span>
               </div>
-              <div className="text-xs text-slate-400 flex items-center gap-1 pt-1 border-t border-slate-800">
-                <MapPin className="w-3.5 h-3.5 text-indigo-400" />
-                <span>{activeReservationModalItem.location_name} ({activeReservationModalItem.approx_distance_m}m)</span>
+              <div className="text-xs text-[#696E79] flex items-center gap-1 pt-1.5 border-t border-[#696E79]/20">
+                <MapPin className="w-3.5 h-3.5 text-[#01C38D]" />
+                <span>{activeReservationModalItem.location_name} ({activeReservationModalItem.approx_distance_m}m away)</span>
               </div>
             </div>
 
-            <div className="mb-6">
-              <label className="block text-xs font-semibold text-slate-300 mb-2">
-                How soon will you arrive at the shop?
+            <div>
+              <label className="block text-xs font-tt-demibold text-[#FFFFFF] mb-2">
+                Estimated Arrival Time:
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[10, 20, 30].map((mins) => (
@@ -582,10 +621,10 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                     key={mins}
                     type="button"
                     onClick={() => setSelectedEta(mins)}
-                    className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    className={`py-2.5 rounded-input text-xs font-tt-demibold border transition-all ${
                       selectedEta === mins
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                        ? 'bg-[#01C38D] text-[#191E29] border-[#01C38D] shadow-[0_0_12px_rgba(1,195,141,0.3)]'
+                        : 'bg-[#132D46] text-[#696E79] border-[#696E79]/40 hover:text-[#FFFFFF]'
                     }`}
                   >
                     {mins} mins
@@ -594,17 +633,20 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
               </div>
             </div>
 
-            <button
+            <Button
               onClick={handleConfirmReservation}
               disabled={reserving}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+              loading={reserving}
+              variant="primary"
+              size="lg"
+              className="w-full"
+              icon={<ArrowRight className="w-4 h-4" />}
             >
-              {reserving ? 'Reserving Stock...' : 'Confirm & Reserve Now'}
-              <ArrowRight className="w-4 h-4" />
-            </button>
+              <span>Confirm & Dispatch via WhatsApp</span>
+            </Button>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

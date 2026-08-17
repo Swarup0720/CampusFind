@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShoppingBag, User as UserIcon, Mail, Phone, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, User as UserIcon, Mail, Phone, Lock, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { authService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 
 export const StudentAuthPage: React.FC = () => {
   const navigate = useNavigate();
   const { setUser } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'register'>('register');
+  const [mode, setMode] = useState<'signin' | 'register'>('signin');
 
   // Form states
   const [fullName, setFullName] = useState('');
@@ -102,174 +104,170 @@ export const StudentAuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
-      {/* Branding Header */}
-      <div className="text-center mb-8">
-        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-indigo-600/30">
-          <ShoppingBag className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-[#191E29] flex flex-col justify-center items-center p-4 relative overflow-hidden">
+      {/* Background Gradient Orbs */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[#01C38D]/10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-[400px] h-[250px] bg-[#132D46] blur-[100px] pointer-events-none" />
+
+      {/* Swissborg-inspired Header */}
+      <div className="text-center mb-8 relative z-10">
+        <div className="w-16 h-16 rounded-2xl bg-[#132D46] border-2 border-[#01C38D] flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(1,195,141,0.35)]">
+          <ShoppingBag className="w-8 h-8 text-[#01C38D]" />
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">CampusFind</h1>
-        <p className="text-sm text-indigo-300 font-medium mt-1">
-          Find it. Reserve it. Pick it up. • ITER College
+        <h1 className="text-3xl sm:text-4xl font-tt-demibold text-[#FFFFFF] tracking-tight">
+          CampusFind
+        </h1>
+        <p className="text-sm font-tt-demibold text-[#01C38D] mt-1.5 tracking-wide flex items-center justify-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" />
+          The new era of Hyperlocal Campus Ordering • ITER College
         </p>
       </div>
 
-      {/* Main Form Card */}
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
-        {/* Toggle Bar */}
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 mb-6">
-          <button
-            type="button"
-            onClick={() => { setMode('register'); setError(''); }}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              mode === 'register' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Create Student Account
-          </button>
+      {/* Main Card */}
+      <div className="w-full max-w-md bg-[#132D46] border border-[#696E79]/30 rounded-card p-6 sm:p-8 shadow-[0_12px_40px_rgba(0,0,0,0.5)] relative z-10">
+        {/* Mode Switcher */}
+        <div className="flex bg-[#191E29] p-1.5 rounded-input border border-[#696E79]/30 mb-6">
           <button
             type="button"
             onClick={() => { setMode('signin'); setError(''); }}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              mode === 'signin' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+            className={`flex-1 py-2.5 text-xs font-tt-demibold rounded-lg transition-all ${
+              mode === 'signin' 
+                ? 'bg-[#01C38D] text-[#191E29] shadow-[0_2px_10px_rgba(1,195,141,0.3)]' 
+                : 'text-[#696E79] hover:text-[#FFFFFF]'
             }`}
           >
             Sign In
           </button>
+          <button
+            type="button"
+            onClick={() => { setMode('register'); setError(''); }}
+            className={`flex-1 py-2.5 text-xs font-tt-demibold rounded-lg transition-all ${
+              mode === 'register' 
+                ? 'bg-[#01C38D] text-[#191E29] shadow-[0_2px_10px_rgba(1,195,141,0.3)]' 
+                : 'text-[#696E79] hover:text-[#FFFFFF]'
+            }`}
+          >
+            Create Account
+          </button>
         </div>
 
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-white">
-            {mode === 'register' ? 'Welcome to CampusFind' : 'Welcome Back'}
+          <h2 className="text-xl font-tt-demibold text-[#FFFFFF]">
+            {mode === 'register' ? 'Join CampusFind' : 'Welcome Back'}
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[#696E79] font-tt mt-1">
             {mode === 'register' 
-              ? 'Register your student account to search live campus inventory' 
-              : 'Sign in with your email or phone number'}
+              ? 'Register with your student details to reserve items instantly.' 
+              : 'Sign in to access 20 live ITER campus outlets.'}
           </p>
         </div>
 
         {error && (
-          <div className="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium leading-relaxed">
+          <div className="mb-5 p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-200 text-xs font-tt leading-relaxed">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Full Name</label>
-              <div className="relative">
-                <UserIcon className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Rahul Kumar"
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
-            </div>
+            <Input
+              label="Full Name"
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="e.g. Rahul Kumar"
+              icon={<UserIcon className="w-4 h-4" />}
+              required
+            />
           )}
 
           {mode === 'register' ? (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Email Address</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="rahul@example.com"
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
-            </div>
+            <Input
+              label="Email Address"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. rahul@example.com"
+              icon={<Mail className="w-4 h-4" />}
+              required
+            />
           ) : (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Email, Username, or Phone</label>
-              <div className="relative">
-                <UserIcon className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
-                <input
-                  type="text"
-                  value={loginIdentifier}
-                  onChange={(e) => setLoginIdentifier(e.target.value)}
-                  placeholder="rahul@example.com or 9876543210"
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
-            </div>
+            <Input
+              label="Email, Username, or Phone Number"
+              type="text"
+              value={loginIdentifier}
+              onChange={(e) => setLoginIdentifier(e.target.value)}
+              placeholder="e.g. student or 7657094157"
+              icon={<UserIcon className="w-4 h-4" />}
+              required
+            />
           )}
 
           {mode === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Mobile Phone Number</label>
+            <div className="flex flex-col gap-1.5 font-tt">
+              <label className="text-xs font-tt-demibold text-[#FFFFFF] tracking-wide">
+                Mobile Phone Number
+              </label>
               <div className="relative flex items-center">
-                <div className="absolute left-3 text-xs font-bold text-indigo-400 font-mono">+91</div>
+                <div className="absolute left-3.5 text-xs font-tt-demibold text-[#01C38D] font-mono z-10">
+                  +91
+                </div>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="9876543210"
+                  placeholder="7657094157"
                   maxLength={10}
-                  className="w-full pl-12 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+                  className="w-full bg-[#132D46] text-[#FFFFFF] placeholder-[#696E79] border border-[#696E79]/40 focus:border-[#01C38D] focus:ring-2 focus:ring-[#01C38D]/30 rounded-input pl-12 pr-4 py-3 text-sm font-medium transition-all duration-200 focus:outline-none"
+                  style={{
+                    backgroundColor: '#132D46',
+                    color: '#FFFFFF',
+                  }}
                   required
                 />
               </div>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                required
-              />
-            </div>
-          </div>
+          <Input
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            icon={<Lock className="w-4 h-4" />}
+            required
+          />
 
           {mode === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Confirm Password</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
-            </div>
+            <Input
+              label="Confirm Password"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              icon={<Lock className="w-4 h-4" />}
+              required
+            />
           )}
 
-          <div className="pt-2">
-            <button
+          <div className="pt-3">
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              className="w-full"
             >
-              <span>{loading ? 'Processing...' : (mode === 'register' ? 'Continue to Marketplace' : 'Sign In')}</span>
+              <span>{mode === 'register' ? 'Create Student Account' : 'Sign In to CampusFind'}</span>
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-slate-800 text-center flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Your information is securely stored in ITER College database.</span>
+        <div className="mt-6 pt-4 border-t border-[#696E79]/20 text-center flex items-center justify-center gap-2 text-xs text-[#696E79] font-tt">
+          <ShieldCheck className="w-4 h-4 text-[#01C38D]" />
+          <span>Encrypted node connection • ITER College verified</span>
         </div>
       </div>
     </div>

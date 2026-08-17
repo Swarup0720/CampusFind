@@ -81,31 +81,16 @@ class WhatsAppNotificationService:
         """
         shop = reservation.shop
 
-        items_str = "\n".join([
-            f"{item.product.name} × {item.quantity}"
-            for item in reservation.items.all()
-        ])
-
-        # Exact required message format
-        total_formatted = int(reservation.total_amount) if float(reservation.total_amount).is_integer() else reservation.total_amount
-        message = (
-            f"🔔 NEW CAMPUSFIND PICKUP REQUEST\n\n"
-            f"Reservation:\n{reservation.reservation_code}\n\n"
-            f"Shop:\n{shop.name}\n\n"
-            f"Product:\n{items_str}\n\n"
-            f"Total:\n₹{total_formatted}\n\n"
-            f"Customer:\nStudent #{reservation.student.id}\n\n"
-            f"Pickup:\nWithin {reservation.pickup_eta_minutes} minutes\n\n"
-            f"Please keep the order ready.\n\n"
-            f"Thank you,\nCampusFind"
-        )
+        # Generate the structured personalized message format
+        message = cls.generate_shopkeeper_whatsapp_message(reservation)
+        normalized_recipient = cls.normalize_phone_number(shopkeeper_whatsapp_number)
 
         notification = Notification.objects.create(
             reservation=reservation,
             shop=shop,
             recipient=shop.owner,
-            recipient_phone=shopkeeper_whatsapp_number,
-            notification_type='NEW_RESERVATION',
+            recipient_phone=normalized_recipient,
+            notification_type='WHATSAPP_ORDER_INITIATED',
             message=message,
             channel=Notification.Channel.WHATSAPP,
             status=Notification.Status.PENDING
@@ -119,7 +104,7 @@ class WhatsAppNotificationService:
             notification.save()
             logger.warning(
                 f"[WHATSAPP NOT CONFIGURED] Reservation {reservation.reservation_code} -> "
-                f"{shopkeeper_whatsapp_number}. Missing: {config_status['missing_credentials']}"
+                f"{normalized_recipient}. Missing: {config_status['missing_credentials']}"
             )
             return notification
 
@@ -239,3 +224,82 @@ class NotificationService:
             status=Notification.Status.SENT,
             sent_at=timezone.now()
         )
+
+    @classmethod
+    def normalize_phone_number(cls, phone_str: str) -> str:
+        if not phone_str:
+            return ""
+        import re
+        digits = re.sub(r'\D', '', phone_str)
+        if len(digits) == 10:
+            return f"91{digits}"
+        elif len(digits) == 12 and digits.startswith('91'):
+            return digits
+        return digits
+
+    @classmethod
+    def generate_shopkeeper_whatsapp_message(cls, reservation) -> str:
+        shop = reservation.shop
+        shopkeeper_name = ""
+        if shop.owner:
+            name_to_use = shop.owner.first_name or shop.owner.full_name or shop.owner.username
+            if name_to_use:
+                shopkeeper_name = name_to_use.split()[0]
+
+        items = reservation.items.all()
+        if len(items) == 1:
+            item = items[0]
+            items_text = f"Product:\n{item.product.name}\n\nQuantity:\n{item.quantity}"
+            closing_text = "Please keep the requested item ready if available."
+        else:
+            bullet_items = "\n".join([f"• {item.product.name} × {item.quantity}" for item in items])
+            items_text = f"Items:\n{bullet_items}"
+            closing_text = "Please keep the requested items ready if available."
+
+        customer_name = reservation.student.full_name or reservation.student.display_name or reservation.student.username
+        greeting = f"Hello {shopkeeper_name}," if shopkeeper_name else "Hello,"
+        
+        return (
+            f"{greeting}\n\n"
+            f"A customer has initiated an order through CampusFind.\n\n"
+            f"🛒 ORDER REQUEST\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{items_text}\n\n"
+            f"Requested:\n"
+            f"Within {reservation.pickup_eta_minutes} minutes\n\n"
+            f"Customer:\n"
+            f"{customer_name}\n\n"
+            f"Order ID:\n"
+            f"{reservation.reservation_code}\n\n"
+            f"{closing_text}\n\n"
+            f"— CampusFind"
+        )
+
+    @classmethod
+    def create_shopkeeper_whatsapp_link(cls, reservation) -> dict:
+        shop = reservation.shop
+        if not shop:
+            return {'link': None, 'error': 'MISSING_SHOP'}
+
+        whatsapp_number = (shop.whatsapp_number or '').strip()
+        if not whatsapp_number:
+            whatsapp_number = (shop.phone or '').strip()
+        if not whatsapp_number and shop.owner:
+            whatsapp_number = (shop.owner.phone or '').strip()
+
+        if not whatsapp_number:
+            return {'link': None, 'error': 'MISSING_NUMBER'}
+
+        normalized = cls.normalize_phone_number(whatsapp_number)
+        if len(normalized) < 10:
+            return {'link': None, 'error': 'INVALID_NUMBER'}
+
+        try:
+            message = cls.generate_shopkeeper_whatsapp_message(reservation)
+        except Exception:
+            return {'link': None, 'error': 'GENERATION_FAILED'}
+
+        import urllib.parse
+        encoded = urllib.parse.quote(message)
+        link = f"https://wa.me/{normalized}?text={encoded}"
+        return {'link': link, 'error': None}
