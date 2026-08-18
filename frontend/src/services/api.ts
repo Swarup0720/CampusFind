@@ -1,5 +1,9 @@
 import axios from 'axios';
-import { AuthResponse, User, Shop, Product, InventoryItem, SearchResponse, Reservation, NotificationLog, WhatsAppConfigStatus } from '../types';
+import { 
+  AuthResponse, User, Shop, Product, InventoryItem, SearchResponse, 
+  Reservation, NotificationLog, WhatsAppConfigStatus, Category, 
+  ProductAttribute, AttributeOption, ProductVariant, ClarificationContext 
+} from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -52,14 +56,26 @@ export const authService = {
 };
 
 export const searchService = {
-  search: async (query: string): Promise<SearchResponse> => {
-    const response = await api.get('/search/', { params: { q: query } });
+  search: async (
+    query: string, 
+    context?: ClarificationContext, 
+    selectedOptionId?: number
+  ): Promise<SearchResponse> => {
+    const response = await api.post('/search/', {
+      q: query,
+      context: context || {},
+      selected_option_id: selectedOptionId || null
+    });
     return response.data;
   },
 };
 
 export const reservationService = {
-  create: async (shopId: number, items: { product_id: number; quantity: number }[], etaMinutes: number = 30): Promise<Reservation> => {
+  create: async (
+    shopId: number, 
+    items: { product_id?: number; variant_id?: number | null; quantity: number }[], 
+    etaMinutes: number = 30
+  ): Promise<Reservation> => {
     const response = await api.post('/reservations/', {
       shop_id: shopId,
       items: items,
@@ -70,6 +86,18 @@ export const reservationService = {
 
   getReservations: async (): Promise<Reservation[]> => {
     const response = await api.get('/reservations/');
+    return response.data;
+  },
+
+  submitPayment: async (
+    reservationId: number,
+    paymentReference: string,
+    paymentMethod: string = 'UPI_QR'
+  ): Promise<Reservation> => {
+    const response = await api.post(`/reservations/${reservationId}/submit-payment/`, {
+      payment_reference: paymentReference,
+      payment_method: paymentMethod,
+    });
     return response.data;
   },
 
@@ -99,12 +127,44 @@ export const adminService = {
     const response = await api.post('/admin/shops/', data);
     return response.data;
   },
+  getCategories: async (): Promise<Category[]> => {
+    const response = await api.get('/admin/categories/');
+    return response.data;
+  },
+  createCategory: async (data: any): Promise<Category> => {
+    const response = await api.post('/admin/categories/', data);
+    return response.data;
+  },
+  getAttributes: async (): Promise<ProductAttribute[]> => {
+    const response = await api.get('/admin/attributes/');
+    return response.data;
+  },
+  createAttribute: async (data: any): Promise<ProductAttribute> => {
+    const response = await api.post('/admin/attributes/', data);
+    return response.data;
+  },
+  getOptions: async (): Promise<AttributeOption[]> => {
+    const response = await api.get('/admin/options/');
+    return response.data;
+  },
+  createOption: async (data: any): Promise<AttributeOption> => {
+    const response = await api.post('/admin/options/', data);
+    return response.data;
+  },
   getProducts: async (): Promise<Product[]> => {
     const response = await api.get('/admin/products/');
     return response.data;
   },
   createProduct: async (data: any): Promise<Product> => {
     const response = await api.post('/admin/products/', data);
+    return response.data;
+  },
+  getVariants: async (): Promise<ProductVariant[]> => {
+    const response = await api.get('/admin/variants/');
+    return response.data;
+  },
+  createVariant: async (data: any): Promise<ProductVariant> => {
+    const response = await api.post('/admin/variants/', data);
     return response.data;
   },
   getInventory: async (): Promise<InventoryItem[]> => {

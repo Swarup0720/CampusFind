@@ -34,41 +34,44 @@ export const Navbar: React.FC<{
 
         {/* Center Student Navigation Tabs */}
         <nav className="flex items-center gap-1.5 bg-[#191E29] p-1.5 rounded-input border border-[#696E79]/30">
-          <button
+          <Link
+            to="/search"
             onClick={() => setActiveTab && setActiveTab('search')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-tt-demibold transition-all ${
-              activeTab === 'search' 
+              activeTab === 'search' || location.pathname === '/' || location.pathname === '/search' || location.pathname === '/products' || location.pathname === '/shops'
                 ? 'bg-[#01C38D] text-[#191E29] shadow-[0_2px_8px_rgba(1,195,141,0.3)] font-bold' 
                 : 'text-[#696E79] hover:text-[#FFFFFF] hover:bg-[#132D46]'
             }`}
           >
             <Search className="w-3.5 h-3.5" />
             <span>Search & Reserve</span>
-          </button>
+          </Link>
 
-          <button
+          <Link
+            to="/reservations"
             onClick={() => setActiveTab && setActiveTab('reservations')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-tt-demibold transition-all ${
-              activeTab === 'reservations' 
+              activeTab === 'reservations' || location.pathname === '/reservations'
                 ? 'bg-[#01C38D] text-[#191E29] shadow-[0_2px_8px_rgba(1,195,141,0.3)] font-bold' 
                 : 'text-[#696E79] hover:text-[#FFFFFF] hover:bg-[#132D46]'
             }`}
           >
             <ShoppingBag className="w-3.5 h-3.5" />
             <span>My Reservations</span>
-          </button>
+          </Link>
 
-          <button
+          <Link
+            to="/profile"
             onClick={() => setActiveTab && setActiveTab('profile')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-tt-demibold transition-all ${
-              activeTab === 'profile' 
+              activeTab === 'profile' || location.pathname === '/profile'
                 ? 'bg-[#01C38D] text-[#191E29] shadow-[0_2px_8px_rgba(1,195,141,0.3)] font-bold' 
                 : 'text-[#696E79] hover:text-[#FFFFFF] hover:bg-[#132D46]'
             }`}
           >
             <UserIcon className="w-3.5 h-3.5" />
             <span>Profile</span>
-          </button>
+          </Link>
         </nav>
 
         {/* Right Student Account & Sign Out */}

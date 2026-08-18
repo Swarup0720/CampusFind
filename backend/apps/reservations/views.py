@@ -33,6 +33,19 @@ class ReservationViewSet(viewsets.ModelViewSet):
 
         return Response(ReservationSerializer(reservation).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='submit-payment')
+    def submit_payment(self, request, pk=None):
+        reservation = self.get_object()
+        ref = request.data.get('payment_reference', '')
+        method = request.data.get('payment_method', 'UPI_QR')
+        updated = ReservationService.submit_payment(
+            reservation=reservation,
+            user=request.user,
+            payment_reference=ref,
+            payment_method=method
+        )
+        return Response(ReservationSerializer(updated).data)
+
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         reservation = self.get_object()

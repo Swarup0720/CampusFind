@@ -249,28 +249,35 @@ class NotificationService:
         items = reservation.items.all()
         if len(items) == 1:
             item = items[0]
-            items_text = f"Product:\n{item.product.name}\n\nQuantity:\n{item.quantity}"
-            closing_text = "Please keep the requested item ready if available."
+            display_name = item.item_name
+            items_text = f"Product:\n{display_name}\n\nQuantity:\n{item.quantity}\n\nAmount:\n₹{reservation.total_amount}"
+            closing_text = "Please keep the requested item ready for pickup."
         else:
-            bullet_items = "\n".join([f"• {item.product.name} × {item.quantity}" for item in items])
-            items_text = f"Items:\n{bullet_items}"
-            closing_text = "Please keep the requested items ready if available."
+            bullet_items = "\n".join([f"• {item.item_name} × {item.quantity} (₹{item.total_price})" for item in items])
+            items_text = f"Items:\n{bullet_items}\n\nTotal Amount:\n₹{reservation.total_amount}"
+            closing_text = "Please keep the requested items ready for pickup."
 
         customer_name = reservation.student.full_name or reservation.student.display_name or reservation.student.username
         greeting = f"Hello {shopkeeper_name}," if shopkeeper_name else "Hello,"
         
+        payment_info = ""
+        if reservation.status == 'PAYMENT_SUBMITTED' or reservation.payment_status == 'SUBMITTED':
+            ref_str = f"UTR: {reservation.payment_reference}" if reservation.payment_reference else "UPI Payment Confirmed"
+            payment_info = f"\n\n💳 PAYMENT STATUS:\nPAID via UPI ({ref_str})"
+        
         return (
             f"{greeting}\n\n"
-            f"A customer has initiated an order through CampusFind.\n\n"
+            f"A customer has placed an order through CampusFind.\n\n"
             f"🛒 ORDER REQUEST\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"
             f"{items_text}\n\n"
-            f"Requested:\n"
+            f"Requested Pickup:\n"
             f"Within {reservation.pickup_eta_minutes} minutes\n\n"
             f"Customer:\n"
             f"{customer_name}\n\n"
             f"Order ID:\n"
-            f"{reservation.reservation_code}\n\n"
+            f"{reservation.reservation_code}"
+            f"{payment_info}\n\n"
             f"{closing_text}\n\n"
             f"— CampusFind"
         )

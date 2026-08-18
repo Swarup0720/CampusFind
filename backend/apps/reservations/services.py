@@ -21,7 +21,8 @@ class ReservationService:
             inventories_to_update = []
 
             for item_info in items_data:
-                product_id = item_info['product_id']
+                product_id = item_info.get('product_id')
+                variant_id = item_info.get('variant_id')
                 qty = int(item_info.get('quantity', 1))
 
                 if qty <= 0:
@@ -29,18 +30,26 @@ class ReservationService:
 
                 # Row-level locking to prevent race conditions
                 try:
-                    inventory = Inventory.objects.select_for_update().get(
-                        shop_id=shop_id,
-                        product_id=product_id,
-                        is_available=True
-                    )
+                    if variant_id:
+                        inventory = Inventory.objects.select_for_update().get(
+                            shop_id=shop_id,
+                            variant_id=variant_id,
+                            is_available=True
+                        )
+                    else:
+                        inventory = Inventory.objects.select_for_update().get(
+                            shop_id=shop_id,
+                            product_id=product_id,
+                            is_available=True
+                        )
                 except Inventory.DoesNotExist:
-                    raise ValidationError(f"Product {product_id} is not available in shop {shop_id}.")
+                    raise ValidationError(f"Item is not available in shop {shop_id}.")
 
                 available = inventory.quantity - inventory.reserved_quantity
                 if available < qty:
+                    item_display = inventory.variant.name if inventory.variant else inventory.product.name
                     raise ValidationError(
-                        f"Insufficient stock for '{inventory.product.name}'. Only {available} available."
+                        f"Insufficient stock for '{item_display}'. Only {available} available."
                     )
 
                 unit_price = inventory.price
@@ -53,6 +62,7 @@ class ReservationService:
 
                 items_to_create.append({
                     'product': inventory.product,
+                    'variant': inventory.variant,
                     'quantity': qty,
                     'unit_price': unit_price,
                     'total_price': item_total
@@ -77,6 +87,7 @@ class ReservationService:
                 ReservationItem.objects.create(
                     reservation=reservation,
                     product=item['product'],
+                    variant=item.get('variant'),
                     quantity=item['quantity'],
                     unit_price=item['unit_price'],
                     total_price=item['total_price']
@@ -87,6 +98,29 @@ class ReservationService:
             NotificationService.send_reservation_notification(reservation)
         except Exception as e:
             # Notification service error must not roll back successful reservation
+            pass
+
+        return reservation
+
+    @classmethod
+    def submit_payment(cls, reservation, user, payment_reference: str = '', payment_method: str = 'UPI_QR'):
+        if user.role == 'STUDENT' and reservation.student != user:
+            raise ValidationError("You cannot update payment for another student's reservation.")
+
+        if reservation.status not in [Reservation.Status.PENDING, Reservation.Status.PAYMENT_SUBMITTED]:
+            raise ValidationError(f"Cannot submit payment for reservation in status '{reservation.status}'.")
+
+        reservation.status = Reservation.Status.PAYMENT_SUBMITTED
+        reservation.payment_status = Reservation.PaymentStatus.SUBMITTED
+        reservation.payment_method = payment_method or Reservation.PaymentMethod.UPI_QR
+        reservation.payment_reference = payment_reference.strip()
+        reservation.payment_submitted_at = timezone.now()
+        reservation.save()
+
+        # Trigger updated WhatsApp notification with payment details
+        try:
+            NotificationService.send_reservation_notification(reservation)
+        except Exception:
             pass
 
         return reservation

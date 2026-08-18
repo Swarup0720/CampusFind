@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Sparkles, MapPin, Store, CheckCircle, Clock, 
   ShoppingBag, ArrowRight, X, RefreshCw, User as UserIcon, Phone, Mail, LogOut,
-  Search, ShieldCheck
+  Search, ShieldCheck, QrCode, Copy, Check, ExternalLink, CreditCard, ArrowLeft
 } from 'lucide-react';
 import { searchService, reservationService } from '../services/api';
 import { SearchResultItem, Reservation } from '../types';
@@ -16,9 +16,17 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  
+  // Checkout & Payment Modal state
   const [activeReservationModalItem, setActiveReservationModalItem] = useState<SearchResultItem | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<'SUMMARY' | 'PAYMENT' | 'SUCCESS'>('SUMMARY');
+  const [currentReservation, setCurrentReservation] = useState<Reservation | null>(null);
+  const [upiTransactionRef, setUpiTransactionRef] = useState('');
+  const [copiedUpi, setCopiedUpi] = useState(false);
   const [selectedEta, setSelectedEta] = useState<number>(20);
   const [reserving, setReserving] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -28,23 +36,27 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
     timestamp: string;
     text?: string;
     parsedFilters?: any;
+    isClarification?: boolean;
+    clarificationQuestion?: string;
+    clarificationOptions?: any[];
+    context?: any;
     searchResults?: SearchResultItem[];
     reservationConfirmed?: Reservation;
   }
 
   const popularCategories = [
-    { name: 'Stationery', query: 'blue pen under 30' },
-    { name: 'Food & Snacks', query: 'Maggi masala noodles' },
+    { name: 'Stationery', query: 'blue pen' },
+    { name: 'Food & Snacks', query: 'paneer roll' },
+    { name: 'Pizza', query: 'large veg pizza' },
+    { name: 'Notebooks', query: 'notebook' },
     { name: 'Electronics', query: 'USB Type-C cable' },
-    { name: 'Printing', query: 'Printout xerox' },
-    { name: 'Personal Care', query: 'hand sanitizer' },
   ];
 
   const initialBotGreeting: ChatMessage = {
     id: 'msg-welcome',
     sender: 'assistant',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    text: `Hello ${user?.full_name || user?.username || 'Student'}! 👋 Welcome to **CampusFind** for **ITER College**.\n\nSearch for stationery, snacks, printouts, or chargers in plain language (e.g. *\"blue pen under ₹30\"*, *\"notebook\"*, or *\"calculator\"*). I will check live inventory across all 20 campus outlets for you!`
+    text: `Hello ${user?.full_name || user?.username || 'Student'}! 👋 Welcome to **CampusFind** for **ITER College**.\n\nSearch for stationery, rolls, pizzas, snacks, or cables in natural language (e.g. *\"I want a pen\"*, *\"I want a roll\"*, *\"large veg pizza\"*, or *\"notebook\"*). I will check live stock across all 20 campus outlets!`
   };
 
   useEffect(() => {
@@ -83,14 +95,25 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
     try {
       const response = await searchService.search(q);
       
+      let botText = "";
+      if (response.is_clarification) {
+        botText = response.clarification_question || "Please choose an option to help me find the exact item:";
+      } else if (response.count > 0) {
+        const itemLabel = response.matched_variant || response.matched_product || response.query;
+        botText = `I found **${response.count} shop${response.count > 1 ? 's' : ''}** with available stock for **"${itemLabel}"**:`;
+      } else {
+        botText = response.message || `⚠️ **This item is currently unavailable across campus outlets.**`;
+      }
+
       const assistantMsg: ChatMessage = {
         id: `ast-${Date.now()}`,
         sender: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: response.count > 0 
-          ? `I found **${response.count} item${response.count > 1 ? 's' : ''}** available across ITER campus shops matching **"${response.query}"**:`
-          : `⚠️ **This item is not available in any store.**\n\nWe searched across all 20 campus outlets at ITER College, but could not find any active inventory matching **"${response.query}"**. Please check for items like pens, notebooks, calculators, Maggi, coffee, printouts, or phone chargers!`,
-        parsedFilters: response.filters,
+        text: botText,
+        isClarification: response.is_clarification,
+        clarificationQuestion: response.clarification_question,
+        clarificationOptions: response.clarification_options,
+        context: response.context,
         searchResults: response.results
       };
 
@@ -108,42 +131,128 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
     }
   };
 
-  const handleConfirmReservation = async () => {
+  const handleSelectClarificationOption = async (option: any, prevContext?: any) => {
+    if (loading) return;
+
+    const userMsg: ChatMessage = {
+      id: `usr-${Date.now()}`,
+      sender: 'user',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: option.name
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setLoading(true);
+
+    try {
+      const response = await searchService.search("", prevContext, option.id);
+      
+      let botText = "";
+      if (response.is_clarification) {
+        botText = response.clarification_question || `Please choose a ${option.attribute_name}:`;
+      } else if (response.count > 0) {
+        const itemLabel = response.matched_variant || response.matched_product || option.name;
+        botText = `Here are the available **"${itemLabel}"** across campus shops:`;
+      } else {
+        botText = response.message || `⚠️ **"${option.name}" is currently out of stock.**`;
+      }
+
+      const assistantMsg: ChatMessage = {
+        id: `ast-${Date.now()}`,
+        sender: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: botText,
+        isClarification: response.is_clarification,
+        clarificationQuestion: response.clarification_question,
+        clarificationOptions: response.clarification_options,
+        context: response.context,
+        searchResults: response.results
+      };
+
+      setMessages(prev => [...prev, assistantMsg]);
+    } catch (error) {
+      const errorMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        sender: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: "Apologies, error processing your option. Please try again."
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenReserveModal = (item: SearchResultItem) => {
+    setActiveReservationModalItem(item);
+    setCheckoutStep('SUMMARY');
+    setCurrentReservation(null);
+    setUpiTransactionRef('');
+    setCopiedUpi(false);
+  };
+
+  const handleProceedToPayment = async () => {
     if (!activeReservationModalItem || reserving) return;
     setReserving(true);
 
     try {
       const newReservation = await reservationService.create(
         activeReservationModalItem.shop_id,
-        [{ product_id: activeReservationModalItem.product_id, quantity: 1 }],
+        [{ 
+          product_id: activeReservationModalItem.product_id,
+          variant_id: activeReservationModalItem.variant_id || null,
+          quantity: 1 
+        }],
         selectedEta
       );
 
-      // Try opening the WhatsApp deep link automatically
-      if (newReservation.whatsapp_link) {
-        window.open(newReservation.whatsapp_link, '_blank');
-      } else if (newReservation.whatsapp_error === 'MISSING_NUMBER') {
-        alert('WhatsApp is not configured for this shop.');
-      } else if (newReservation.whatsapp_error === 'INVALID_NUMBER') {
-        alert("The shopkeeper's WhatsApp contact is currently unavailable.");
-      }
+      setCurrentReservation(newReservation);
+      setCheckoutStep('PAYMENT');
+      await loadMyReservations();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.response?.data?.[0] || 'Failed to initiate order. Stock might be reserved.');
+    } finally {
+      setReserving(false);
+    }
+  };
 
+  const handleConfirmUpiPayment = async () => {
+    if (!currentReservation || submittingPayment) return;
+    setSubmittingPayment(true);
+
+    try {
+      const updatedReservation = await reservationService.submitPayment(
+        currentReservation.id,
+        upiTransactionRef || 'UPI_PAID',
+        'UPI_QR'
+      );
+
+      setCurrentReservation(updatedReservation);
+      setCheckoutStep('SUCCESS');
+
+      // Post success message in chat stream
       const confirmMsg: ChatMessage = {
         id: `conf-${Date.now()}`,
         sender: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `✓ **Order Initiated**\n\nYour request has been initiated with:\n\n**${activeReservationModalItem.shop}**\n\n🛒 ${activeReservationModalItem.product} × 1\n⏱ Within ${selectedEta} minutes\n\nThe shopkeeper has been contacted through WhatsApp.\n\nYou can collect the item once it is ready.`,
-        reservationConfirmed: newReservation
+        text: `✓ **Payment Submitted & Order Placed!**\n\nYour order has been submitted with **Payment Confirmed** to:\n\n**${updatedReservation.shop_name}**\n\n🛒 ${activeReservationModalItem?.product || 'Item'} × 1\n💳 Payment: UPI (UTR: ${upiTransactionRef || 'Verified'})\n⏱ Pickup Within: ${updatedReservation.pickup_eta_minutes || 20} minutes\n\nThe shopkeeper has received the order with payment details.`,
+        reservationConfirmed: updatedReservation
       };
 
       setMessages(prev => [...prev, confirmMsg]);
-      setActiveReservationModalItem(null);
       await loadMyReservations();
     } catch (err: any) {
-      alert(err.response?.data?.detail || err.response?.data?.[0] || 'Failed to create reservation. Stock might be reserved.');
+      alert(err.response?.data?.detail || 'Failed to submit payment confirmation.');
     } finally {
-      setReserving(false);
+      setSubmittingPayment(false);
     }
+  };
+
+  const handleCopyUpi = (upiId: string) => {
+    if (!upiId) return;
+    navigator.clipboard.writeText(upiId);
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 2500);
   };
 
   const handleCancelReservation = async (resId: number) => {
@@ -247,6 +356,26 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                     </div>
                   )}
 
+                  {/* Interactive Clarification Option Chips */}
+                  {msg.isClarification && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2.5 max-w-2xl bg-[#191E29]/80 p-3.5 rounded-2xl border border-[#01C38D]/40 shadow-md">
+                      <div className="w-full text-[11px] font-tt-demibold text-[#01C38D] mb-1 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-[#01C38D]" />
+                        <span>Select an option:</span>
+                      </div>
+                      {msg.clarificationOptions.map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => handleSelectClarificationOption(opt, msg.context)}
+                          className="px-4 py-2 bg-[#132D46] hover:bg-[#01C38D] text-[#FFFFFF] hover:text-[#191E29] border border-[#696E79]/40 hover:border-[#01C38D] rounded-xl text-xs font-tt-demibold transition-all duration-150 shadow-sm hover:shadow-[0_4px_12px_rgba(1,195,141,0.3)] hover:scale-105 active:scale-95 flex items-center gap-2 cursor-pointer"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-[#01C38D]" />
+                          <span>{opt.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {msg.searchResults && msg.searchResults.length > 0 && (
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl">
                       {msg.searchResults.map((item) => (
@@ -299,7 +428,7 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                           </div>
 
                           <Button
-                            onClick={() => setActiveReservationModalItem(item)}
+                            onClick={() => handleOpenReserveModal(item)}
                             variant="primary"
                             size="md"
                             className="w-full"
@@ -320,7 +449,7 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                         </div>
                         <div>
                           <span className="text-[10px] font-tt-demibold uppercase tracking-wider text-[#01C38D]">
-                            {msg.reservationConfirmed.status === 'PENDING' ? 'Order Initiated' : 'Order Confirmed ✓'}
+                            {msg.reservationConfirmed.status === 'PAYMENT_SUBMITTED' ? 'Payment Submitted ✓' : msg.reservationConfirmed.status === 'PENDING' ? 'Order Initiated' : 'Order Confirmed ✓'}
                           </span>
                           <h3 className="font-tt-demibold text-[#FFFFFF] text-xl tracking-tight">{msg.reservationConfirmed.reservation_code}</h3>
                         </div>
@@ -344,6 +473,12 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
                           <span className="text-[#FFFFFF]">Total Amount</span>
                           <span className="text-[#01C38D]">₹{msg.reservationConfirmed.total_amount}</span>
                         </div>
+                        {msg.reservationConfirmed.payment_reference && (
+                          <div className="flex justify-between text-[11px] text-[#01C38D] pt-1">
+                            <span>💳 Payment Reference:</span>
+                            <span className="font-mono">{msg.reservationConfirmed.payment_reference}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-[11px] text-[#696E79] pt-1">
                           <span className="flex items-center gap-1">⏱ ETA: Within {msg.reservationConfirmed.pickup_eta_minutes || 20} minutes</span>
                         </div>
@@ -588,62 +723,287 @@ export const StudentChatPage: React.FC<{ activeTab?: 'search' | 'reservations' |
         </div>
       )}
 
-      {/* Reservation Confirmation Modal */}
+      {/* Multi-Step Checkout & UPI QR Payment Modal */}
       <Modal
         isOpen={!!activeReservationModalItem}
-        onClose={() => setActiveReservationModalItem(null)}
-        title="Confirm Pickup Request"
-        subtitle="Select your arrival timeframe to notify the shopkeeper via WhatsApp."
+        onClose={() => {
+          setActiveReservationModalItem(null);
+          setCheckoutStep('SUMMARY');
+        }}
+        title={
+          checkoutStep === 'SUMMARY' ? "Order Summary & Pickup Details" :
+          checkoutStep === 'PAYMENT' ? "UPI Payment & QR Code" :
+          "Order Confirmation"
+        }
+        subtitle={
+          checkoutStep === 'SUMMARY' ? "Review your requested item, campus outlet, and pickup ETA." :
+          checkoutStep === 'PAYMENT' ? "Scan the shopkeeper's QR code or pay via any UPI app." :
+          "Your pickup order has been recorded with Payment Submitted status."
+        }
       >
         {activeReservationModalItem && (
-          <div className="space-y-5 font-tt">
-            <div className="bg-[#191E29] p-4 rounded-card border border-[#696E79]/30 space-y-2">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-tt-demibold text-[#FFFFFF] text-sm">{activeReservationModalItem.product}</h4>
-                  <div className="text-xs text-[#696E79]">{activeReservationModalItem.shop}</div>
+          <div className="space-y-5 font-tt text-xs">
+            {/* Step 1: Order Summary */}
+            {checkoutStep === 'SUMMARY' && (
+              <div className="space-y-4">
+                <div className="bg-[#191E29] p-4 rounded-card border border-[#696E79]/30 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <Badge variant="emerald" size="sm">
+                        {activeReservationModalItem.category}
+                      </Badge>
+                      <h4 className="font-tt-demibold text-[#FFFFFF] text-base mt-1">
+                        {activeReservationModalItem.product}
+                      </h4>
+                      {activeReservationModalItem.brand && (
+                        <div className="text-[#696E79] text-xs">Brand: {activeReservationModalItem.brand}</div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xl font-tt-demibold text-[#01C38D]">₹{activeReservationModalItem.price}</span>
+                      <div className="text-[11px] text-[#696E79]">per {activeReservationModalItem.unit}</div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#132D46] p-3 rounded-xl border border-[#696E79]/20 space-y-1.5">
+                    <div className="flex items-center gap-2 font-tt-demibold text-[#FFFFFF]">
+                      <Store className="w-3.5 h-3.5 text-[#01C38D]" />
+                      <span>{activeReservationModalItem.shop}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-[#696E79]">
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-[#01C38D]" />
+                        {activeReservationModalItem.location_name}
+                      </span>
+                      <span className="text-[#01C38D] font-tt-demibold">{activeReservationModalItem.approx_distance_m}m away</span>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-lg font-tt-demibold text-[#01C38D]">₹{activeReservationModalItem.price}</span>
-              </div>
-              <div className="text-xs text-[#696E79] flex items-center gap-1 pt-1.5 border-t border-[#696E79]/20">
-                <MapPin className="w-3.5 h-3.5 text-[#01C38D]" />
-                <span>{activeReservationModalItem.location_name} ({activeReservationModalItem.approx_distance_m}m away)</span>
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-tt-demibold text-[#FFFFFF] mb-2">
-                Estimated Arrival Time:
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[10, 20, 30].map((mins) => (
-                  <button
-                    key={mins}
-                    type="button"
-                    onClick={() => setSelectedEta(mins)}
-                    className={`py-2.5 rounded-input text-xs font-tt-demibold border transition-all ${
-                      selectedEta === mins
-                        ? 'bg-[#01C38D] text-[#191E29] border-[#01C38D] shadow-[0_0_12px_rgba(1,195,141,0.3)]'
-                        : 'bg-[#132D46] text-[#696E79] border-[#696E79]/40 hover:text-[#FFFFFF]'
-                    }`}
+                <div>
+                  <label className="block text-xs font-tt-demibold text-[#FFFFFF] mb-2">
+                    Estimated Pickup Timeframe:
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[10, 20, 30].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setSelectedEta(mins)}
+                        className={`py-2.5 rounded-input text-xs font-tt-demibold border transition-all ${
+                          selectedEta === mins
+                            ? 'bg-[#01C38D] text-[#191E29] border-[#01C38D] shadow-[0_0_12px_rgba(1,195,141,0.3)]'
+                            : 'bg-[#132D46] text-[#696E79] border-[#696E79]/40 hover:text-[#FFFFFF]'
+                        }`}
+                      >
+                        Within {mins} mins
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-[#191E29] p-3.5 rounded-xl border border-[#696E79]/30 space-y-1.5">
+                  <div className="flex justify-between text-[#696E79]">
+                    <span>Item Subtotal:</span>
+                    <span>₹{activeReservationModalItem.price}</span>
+                  </div>
+                  <div className="flex justify-between text-[#696E79]">
+                    <span>Campus Convenience Fee:</span>
+                    <span className="text-[#01C38D]">₹0 (Free)</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-[#696E79]/30 font-tt-demibold text-sm text-[#FFFFFF]">
+                    <span>Total Amount Payable:</span>
+                    <span className="text-[#01C38D] text-base">₹{activeReservationModalItem.price}</span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleProceedToPayment}
+                  disabled={reserving}
+                  loading={reserving}
+                  variant="primary"
+                  size="lg"
+                  className="w-full"
+                  icon={<CreditCard className="w-4 h-4" />}
+                >
+                  <span>Proceed to UPI Payment &rarr;</span>
+                </Button>
+              </div>
+            )}
+
+            {/* Step 2: Payment Page & QR Code */}
+            {checkoutStep === 'PAYMENT' && currentReservation && (
+              <div className="space-y-4">
+                {/* Total amount header */}
+                <div className="bg-[#01C38D]/10 border border-[#01C38D]/40 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-[#01C38D]" />
+                    <span className="font-tt-demibold text-[#FFFFFF] text-sm">Scan & Pay via UPI</span>
+                  </div>
+                  <span className="text-xl font-tt-demibold text-[#01C38D]">₹{currentReservation.total_amount}</span>
+                </div>
+
+                {/* QR Code Container */}
+                <div className="bg-[#FFFFFF] p-4 rounded-2xl flex flex-col items-center justify-center text-[#191E29] shadow-lg border border-[#01C38D]/30 max-w-[260px] mx-auto">
+                  {/* Custom Uploaded QR or Dynamic UPI QR Code */}
+                  <img
+                    src={
+                      currentReservation.shop_qr_code_image ||
+                      `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                        currentReservation.upi_payment_uri ||
+                        `upi://pay?pa=${currentReservation.shop_upi_id || '9853000001@paytm'}&pn=${encodeURIComponent(currentReservation.shop_name)}&am=${currentReservation.total_amount}&cu=INR&tn=Order_${currentReservation.reservation_code}`
+                      )}&margin=4`
+                    }
+                    alt="Shopkeeper UPI QR Code"
+                    className="w-48 h-48 rounded-lg shadow-sm object-contain"
+                  />
+                  <div className="flex items-center gap-2 mt-2.5 opacity-80">
+                    <span className="text-[10px] font-bold tracking-widest text-[#191E29] uppercase">GPay • PhonePe • Paytm • BHIM</span>
+                  </div>
+                </div>
+
+                {/* Shopkeeper UPI details */}
+                <div className="bg-[#191E29] p-3.5 rounded-xl border border-[#696E79]/30 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-[#696E79]">Shop Payee:</span>
+                    <strong className="text-[#FFFFFF] font-tt-demibold">{currentReservation.shop_upi_name || currentReservation.shop_name}</strong>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-[#696E79]">Shopkeeper UPI ID:</span>
+                    <div className="flex items-center gap-1.5">
+                      <code className="bg-[#132D46] px-2 py-1 rounded text-[#01C38D] font-mono text-[11px] font-bold">
+                        {currentReservation.shop_upi_id || `${currentReservation.shop_phone}@upi`}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyUpi(currentReservation.shop_upi_id || `${currentReservation.shop_phone}@upi`)}
+                        className="p-1 rounded bg-[#132D46] hover:bg-[#01C38D] text-[#696E79] hover:text-[#191E29] transition-colors"
+                        title="Copy UPI ID"
+                      >
+                        {copiedUpi ? <Check className="w-3.5 h-3.5 text-[#01C38D]" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  {copiedUpi && (
+                    <div className="text-[11px] text-[#01C38D] text-right font-tt-demibold">✓ UPI ID copied to clipboard!</div>
+                  )}
+                </div>
+
+                {/* Mobile Pay Link */}
+                {currentReservation.upi_payment_uri && (
+                  <a
+                    href={currentReservation.upi_payment_uri}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#132D46] hover:bg-[#1A3B5C] text-[#01C38D] border border-[#01C38D]/40 rounded-input font-tt-demibold text-xs transition-all text-center"
                   >
-                    {mins} mins
-                  </button>
-                ))}
-              </div>
-            </div>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Installed UPI App on Mobile</span>
+                  </a>
+                )}
 
-            <Button
-              onClick={handleConfirmReservation}
-              disabled={reserving}
-              loading={reserving}
-              variant="primary"
-              size="lg"
-              className="w-full"
-              icon={<ArrowRight className="w-4 h-4" />}
-            >
-              <span>Confirm & Dispatch via WhatsApp</span>
-            </Button>
+                {/* UPI Reference / UTR Input */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-xs font-tt-demibold text-[#FFFFFF]">
+                    Enter 12-Digit UPI Transaction ID / UTR (Optional):
+                  </label>
+                  <input
+                    type="text"
+                    value={upiTransactionRef}
+                    onChange={(e) => setUpiTransactionRef(e.target.value)}
+                    placeholder="e.g. 423871928341 or leave empty"
+                    className="w-full px-3 py-2.5 bg-[#191E29] text-[#FFFFFF] placeholder-[#696E79] border border-[#696E79]/40 focus:border-[#01C38D] focus:ring-2 focus:ring-[#01C38D]/30 rounded-input text-xs font-mono focus:outline-none"
+                  />
+                  <p className="text-[10px] text-[#696E79]">Found in your UPI app receipt under Transaction Details.</p>
+                </div>
+
+                <div className="flex gap-2.5 pt-2">
+                  <Button
+                    onClick={() => setCheckoutStep('SUMMARY')}
+                    variant="secondary"
+                    size="md"
+                    className="w-1/3"
+                    icon={<ArrowLeft className="w-4 h-4" />}
+                  >
+                    <span>Back</span>
+                  </Button>
+                  <Button
+                    onClick={handleConfirmUpiPayment}
+                    disabled={submittingPayment}
+                    loading={submittingPayment}
+                    variant="primary"
+                    size="md"
+                    className="w-2/3"
+                    icon={<CheckCircle className="w-4 h-4" />}
+                  >
+                    <span>I Have Paid • Confirm Order</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Success State */}
+            {checkoutStep === 'SUCCESS' && currentReservation && (
+              <div className="space-y-4 text-center py-2">
+                <div className="w-16 h-16 rounded-2xl bg-[#01C38D]/20 border-2 border-[#01C38D] flex items-center justify-center text-[#01C38D] mx-auto shadow-[0_0_25px_rgba(1,195,141,0.4)]">
+                  <CheckCircle className="w-8 h-8" />
+                </div>
+
+                <div>
+                  <Badge variant="emerald" size="sm">
+                    STATUS: PAYMENT SUBMITTED
+                  </Badge>
+                  <h3 className="font-tt-demibold text-[#FFFFFF] text-xl tracking-tight mt-2">
+                    Order Placed Successfully!
+                  </h3>
+                  <p className="text-xs text-[#696E79] mt-1">
+                    Your pickup request code: <strong className="text-[#01C38D] font-mono text-sm">{currentReservation.reservation_code}</strong>
+                  </p>
+                </div>
+
+                <div className="bg-[#191E29] p-4 rounded-xl border border-[#696E79]/30 text-left space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[#696E79]">Outlet:</span>
+                    <span className="font-tt-demibold text-[#FFFFFF]">{currentReservation.shop_name}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[#696E79]">Amount Paid:</span>
+                    <span className="font-tt-demibold text-[#01C38D]">₹{currentReservation.total_amount}</span>
+                  </div>
+                  {upiTransactionRef && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#696E79]">UPI UTR:</span>
+                      <span className="font-mono text-[#FFFFFF]">{upiTransactionRef}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs pt-1 border-t border-[#696E79]/20">
+                    <span className="text-[#696E79]">Pickup ETA:</span>
+                    <span className="font-tt-demibold text-[#FFFFFF]">Within {currentReservation.pickup_eta_minutes || 20} mins</span>
+                  </div>
+                </div>
+
+                {currentReservation.whatsapp_link && (
+                  <a
+                    href={currentReservation.whatsapp_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 w-full py-3 bg-[#01C38D] hover:bg-[#00AB7B] text-[#191E29] font-tt-demibold font-bold rounded-input text-sm transition-all shadow-[0_4px_16px_rgba(1,195,141,0.35)]"
+                  >
+                    <span>💬 Open WhatsApp Alert to Shopkeeper</span>
+                  </a>
+                )}
+
+                <Button
+                  onClick={() => {
+                    setActiveReservationModalItem(null);
+                    setCheckoutStep('SUMMARY');
+                  }}
+                  variant="secondary"
+                  size="md"
+                  className="w-full"
+                >
+                  <span>Done & Return to Chat</span>
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

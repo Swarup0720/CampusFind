@@ -5,7 +5,10 @@ import {
   Bell, BarChart3, LogOut, Plus, RefreshCw, Search 
 } from 'lucide-react';
 import { adminService } from '../services/api';
-import { Shop, Product, InventoryItem, User, Reservation, NotificationLog, WhatsAppConfigStatus } from '../types';
+import { 
+  Shop, Product, InventoryItem, User, Reservation, NotificationLog, 
+  WhatsAppConfigStatus, Category, ProductAttribute, ProductVariant 
+} from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -17,10 +20,13 @@ import { Input } from '../components/ui/Input';
 export const AdminPanel: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'shops' | 'products' | 'inventory' | 'users' | 'reservations' | 'notifications'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'shops' | 'products' | 'attributes' | 'inventory' | 'users' | 'reservations' | 'notifications'>('dashboard');
 
   const [stats, setStats] = useState<any>(null);
   const [shops, setShops] = useState<Shop[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [attributes, setAttributes] = useState<ProductAttribute[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -29,7 +35,7 @@ export const AdminPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Form states for adding new shop & product
+  // Form states for adding new shop & product & attributes
   const [showAddShopModal, setShowAddShopModal] = useState(false);
   const [newShopName, setNewShopName] = useState('');
   const [newShopLocation, setNewShopLocation] = useState('');
@@ -37,8 +43,18 @@ export const AdminPanel: React.FC = () => {
 
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProductName, setNewProductName] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState<number | string>('');
   const [newProductBrand, setNewProductBrand] = useState('');
   const [newProductUnit, setNewProductUnit] = useState('piece');
+  const [newProductPrice, setNewProductPrice] = useState('10');
+  const [newProductHasVariants, setNewProductHasVariants] = useState(false);
+  const [newProductSelectedAttrs, setNewProductSelectedAttrs] = useState<number[]>([]);
+
+  // Form states for adding dynamic attribute & options
+  const [showAddAttributeModal, setShowAddAttributeModal] = useState(false);
+  const [newAttrName, setNewAttrName] = useState('');
+  const [newAttrCategory, setNewAttrCategory] = useState<number | string>('');
+  const [newAttrOptions, setNewAttrOptions] = useState('');
 
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfigStatus | null>(null);
 
@@ -49,9 +65,12 @@ export const AdminPanel: React.FC = () => {
   const loadAdminData = async () => {
     setLoading(true);
     try {
-      const [st, sh, pr, inv, us, res, notif, waConfig] = await Promise.all([
+      const [st, sh, cats, attrs, vars, pr, inv, us, res, notif, waConfig] = await Promise.all([
         adminService.getStats(),
         adminService.getShops(),
+        adminService.getCategories(),
+        adminService.getAttributes(),
+        adminService.getVariants(),
         adminService.getProducts(),
         adminService.getInventory(),
         adminService.getUsers(),
@@ -61,6 +80,9 @@ export const AdminPanel: React.FC = () => {
       ]);
       setStats(st);
       setShops(sh);
+      setCategories(cats);
+      setAttributes(attrs);
+      setVariants(vars);
       setProducts(pr);
       setInventory(inv);
       setUsers(us);
@@ -100,14 +122,52 @@ export const AdminPanel: React.FC = () => {
         name: newProductName,
         brand: newProductBrand,
         unit: newProductUnit,
-        category: 1
+        base_price: parseFloat(newProductPrice) || 0,
+        category: newProductCategory ? Number(newProductCategory) : null,
+        has_variants: newProductHasVariants,
+        attributes: newProductSelectedAttrs
       });
       setShowAddProductModal(false);
       setNewProductName('');
       setNewProductBrand('');
+      setNewProductPrice('10');
+      setNewProductHasVariants(false);
+      setNewProductSelectedAttrs([]);
       await loadAdminData();
     } catch (err) {
       alert("Failed to create product.");
+    }
+  };
+
+  const handleCreateAttribute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const createdAttr = await adminService.createAttribute({
+        name: newAttrName,
+        category: newAttrCategory ? Number(newAttrCategory) : null,
+        data_type: 'select',
+        is_filterable: true
+      });
+
+      // Create options if specified (comma separated)
+      if (newAttrOptions.trim() && createdAttr.id) {
+        const optionList = newAttrOptions.split(',').map(s => s.trim()).filter(Boolean);
+        for (const optVal of optionList) {
+          await adminService.createOption({
+            attribute: createdAttr.id,
+            value: optVal.toLowerCase().replace(/\s+/g, '-'),
+            display_name: optVal
+          });
+        }
+      }
+
+      setShowAddAttributeModal(false);
+      setNewAttrName('');
+      setNewAttrCategory('');
+      setNewAttrOptions('');
+      await loadAdminData();
+    } catch (err) {
+      alert("Failed to create attribute.");
     }
   };
 

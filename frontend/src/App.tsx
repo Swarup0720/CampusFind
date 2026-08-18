@@ -55,7 +55,10 @@ const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'search' | 'reservations' | 'profile'>('search');
   const location = useLocation();
 
-  const isAuthOrAdminRoute = location.pathname.startsWith('/admin-panel') || location.pathname === '/signin';
+  const isAuthOrAdminRoute = location.pathname.startsWith('/admin-panel') || 
+                              location.pathname === '/signin' || 
+                              location.pathname === '/login' || 
+                              location.pathname === '/register';
 
   return (
     <div className="min-h-screen bg-bg text-fintech-primary flex flex-col font-sans selection:bg-accent selection:text-bg">
@@ -69,11 +72,53 @@ const MainContent: React.FC = () => {
       <main className="flex-1 pb-8">
         <Routes>
           <Route path="/signin" element={<StudentAuthPage />} />
+          <Route path="/login" element={<StudentAuthPage />} />
+          <Route path="/register" element={<StudentAuthPage />} />
           <Route 
             path="/" 
             element={
               <ProtectedStudentRoute>
                 <StudentChatPage activeTab={activeTab} />
+              </ProtectedStudentRoute>
+            } 
+          />
+          <Route 
+            path="/search" 
+            element={
+              <ProtectedStudentRoute>
+                <StudentChatPage activeTab="search" />
+              </ProtectedStudentRoute>
+            } 
+          />
+          <Route 
+            path="/products" 
+            element={
+              <ProtectedStudentRoute>
+                <StudentChatPage activeTab="search" />
+              </ProtectedStudentRoute>
+            } 
+          />
+          <Route 
+            path="/shops" 
+            element={
+              <ProtectedStudentRoute>
+                <StudentChatPage activeTab="search" />
+              </ProtectedStudentRoute>
+            } 
+          />
+          <Route 
+            path="/reservations" 
+            element={
+              <ProtectedStudentRoute>
+                <StudentChatPage activeTab="reservations" />
+              </ProtectedStudentRoute>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <ProtectedStudentRoute>
+                <StudentChatPage activeTab="profile" />
               </ProtectedStudentRoute>
             } 
           />
